@@ -174,16 +174,6 @@ Type a message and receive AI-generated responses.
 
 ---
 
-## Future Improvements
-
-* Deploy to cloud (Vercel + Render)
-* Add authentication
-* Store chat history in database
-* Add streaming API (real-time tokens)
-* Dynamic model selection UI (optional)
-
----
-
 ## Author
 
 五惺惺
