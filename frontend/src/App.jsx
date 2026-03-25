@@ -114,7 +114,6 @@ signal: controller.signal,
 body:JSON.stringify({
 
 messages:[...activeChat.messages,userMessage],
-model,
 temperature:getTemperature(),
 max_tokens:1500
 
@@ -124,7 +123,7 @@ max_tokens:1500
 
 const data=await response.json()
 
-const text=data.reply
+const text=data.reply || "⚠️ No response from AI"
 
 let streamed=""
 

@@ -21,7 +21,7 @@ app.post("/chat", async (req, res) => {
 
   try {
 
-  const selectedModel = model || "llama-3.1-8b-instant"
+  const selectedModel = model || "llama-3.1-8b-8192"
 
   const response = await client.chat.completions.create({
     model: selectedModel,
