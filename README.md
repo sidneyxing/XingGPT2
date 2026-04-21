@@ -1,6 +1,6 @@
-# XingGPT
+# XingGPT v2
 
-A full-stack AI chatbot application using a custom LLM API (Groq), with backend-controlled model selection and automatic fallback handling.
+A full-stack AI agent application powered by Groq LLM API, featuring long-term memory, multimodal vision, intelligent model routing, and built-in tool use.
 
 ---
 
@@ -10,7 +10,7 @@ A full-stack AI chatbot application using a custom LLM API (Groq), with backend-
 XingGPT/
 │
 ├── backend/
-│   ├── server.js            # Backend server & API logic
+│   ├── server.js            # Backend server, routing, tools & memory extraction
 │   ├── package.json
 │   ├── package-lock.json
 │   └── .env (not included)  # Store API key securely
@@ -20,7 +20,7 @@ XingGPT/
 │   │   └── bg.png           # Background image
 │   │
 │   ├── src/
-│   │   ├── App.jsx          # Chat UI & logic
+│   │   ├── App.jsx          # Chat UI, memory, multimodal & tool display
 │   │   ├── App.css          # Styling
 │   │   └── main.jsx         # Entry point
 │   │
@@ -36,71 +36,79 @@ XingGPT/
 
 ## Key Features
 
-* AI Chat interface using Groq LLM API
-* Real-time response rendering (simulated streaming)
+### v1
+* AI chat interface using Groq LLM API
+* Simulated streaming response rendering
 * Stop generation functionality
 * Chat history persistence (localStorage)
-* Multiple chat sessions
-* Backend-controlled model selection
-* Automatic fallback if primary model fails
-* Secure API key handling using `.env`
+* Multiple chat sessions with rename/delete
+* Backend-controlled model selection with automatic fallback
+* Secure API key handling via `.env`
+
+### v2 (New)
+* **Long-term Memory** — AI remembers facts about you across sessions
+* **Multimodal (Vision)** — attach and analyze images in chat
+* **Auto Model Routing** — backend selects the best model per query type
+* **Tool Use** — AI can call built-in tools automatically:
+  * `get_weather` — live weather by city
+  * `calculate` — safe math expression evaluator
+  * `get_current_time` — current date and time
+* **Model & Tool Badge** — shows which model and tools were used per reply
+* **Memory Panel** — view, delete, and clear remembered facts in the sidebar
 
 ---
 
 ## Backend Overview
 
-The backend is built with **Node.js (Express)** and acts as a middleware between the frontend and the LLM API.
+Built with **Node.js (Express)**. Acts as middleware between the frontend and the Groq API.
 
-### Responsibilities:
+### Endpoints
 
-* Handle `/chat` requests
-* Send prompts to Groq API
-* Return AI responses
-* Manage model selection internally
-* Provide fallback mechanism if model fails
+| Endpoint | Method | Description |
+|---|---|---|
+| `/chat` | POST | Main chat endpoint — handles routing, tools, memory injection |
+| `/extract-memory` | POST | Summarizes a conversation into user facts for long-term memory |
 
----
+### Model Routing Logic
 
-## Model Handling
+The backend automatically selects a model based on the message content:
 
-The model is **NOT controlled by the frontend UI**.
+| Condition | Model Selected |
+|---|---|
+| Message contains an image | `llava-v1.5-7b-4096-preview` |
+| Code / debugging keywords | `llama-3.3-70b-versatile` |
+| Math / calculation keywords | `llama-3.3-70b-versatile` |
+| Short query (< 80 chars) | `llama-3.1-8b-instant` |
+| Default / balanced | `llama-3.1-8b-instant` |
+| Any failure | `llama-3.3-70b-versatile` (fallback) |
 
-### Behavior:
+### Tool Use
 
-* Backend uses a **default model**
-* If the request fails, it automatically switches to a **fallback model**
+Tools follow the OpenAI function-calling format. When the model decides to call a tool, the backend executes it and sends results back in a second pass before returning the final reply.
+
+### Long-term Memory
+
+After each conversation turn, `/extract-memory` uses an LLM to extract user-specific facts (name, preferences, goals, etc.) as bullet points. These are stored in the frontend's `localStorage` and injected as a system prompt on every future request.
 
 ---
 
 ## Frontend Overview
 
-Built using **React (Vite)**.
+Built with **React (Vite)**.
 
-### `public/`
+### `src/App.jsx`
+* Manages chat state and multi-session history
+* Sends memory array alongside messages on every request
+* Handles image file selection and base64 encoding for vision requests
+* Displays model badge and tool badges per reply
+* Renders memory panel in sidebar (view / delete individual facts / clear all)
 
-* Static assets
-* `bg.png` used as background
+### `src/App.css`
+* All existing styles preserved
+* New: memory panel, image preview strip, attach button, status bar badges
 
-### `src/`
-
-* `App.jsx`
-
-  * Handles user input
-  * Sends requests to backend
-  * Displays AI responses
-  * Manages chat state
-
-* `App.css`
-
-  * UI styling and layout
-
-* `main.jsx`
-
-  * React entry point
-
-### `index.html`
-
-* Root HTML container (`#root`)
+### `main.jsx`
+* React entry point (unchanged)
 
 ---
 
@@ -112,8 +120,6 @@ Built using **React (Vite)**.
 git clone https://github.com/your-username/my-own-gpt.git
 cd my-own-gpt
 ```
-
----
 
 ### 2. Setup Backend
 
@@ -134,13 +140,11 @@ Run backend:
 node server.js
 ```
 
----
-
 ### 3. Setup Frontend
 
 ```bash
 cd ../frontend
-npm install
+npm install react-markdown
 npm run dev
 ```
 
@@ -154,23 +158,34 @@ Open:
 http://localhost:5173
 ```
 
-Type a message and receive AI-generated responses.
+### New features
+
+| Feature | How to use |
+|---|---|
+| **Memory** | Chat normally — facts are auto-extracted. Click 🧠 in the sidebar to view or delete them. |
+| **Image input** | Click 🖼️ next to the input box, select an image, then send. |
+| **Weather** | Ask *"What's the weather in Tokyo?"* |
+| **Calculator** | Ask *"What is 347 × 29?"* |
+| **Current time** | Ask *"What time is it?"* |
+| **Model badge** | Shown below the chat after each reply — indicates which model and tools were used. |
 
 ---
 
 ## Security Notes
 
 * `.env` is excluded from GitHub
-* API keys are never exposed in the frontend
-* Each user must provide their own API key
+* API keys are never exposed to the frontend
+* Each user must provide their own Groq API key
+* Image data is encoded as base64 and never stored server-side
 
 ---
 
 ## Error Handling
 
-* Backend returns `500` if all models fail
-* Includes fallback retry mechanism
-* Prevents app crash on API failure
+* Automatic fallback to `llama-3.3-70b-versatile` if primary model fails
+* Vision requests skip tool calling (not supported by vision models)
+* Memory extraction failures are silent and non-blocking
+* Frontend displays error bubble on any network failure
 
 ---
 
