@@ -3,7 +3,7 @@ import cors from "cors"
 import dotenv from "dotenv"
 import OpenAI from "openai"
 import multer from "multer"
-import pdfParse from "pdf-parse/lib/pdf-parse.js"
+import { createRequire } from "module"
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
@@ -17,6 +17,9 @@ app.use(express.json({ limit: "20mb" }))
 
 const memStorage = multer({ storage: multer.memoryStorage() })
 const diskStorage = multer({ dest: path.join(__dirname, "uploads/") })
+
+const require = createRequire(import.meta.url)
+const pdfParse = require("pdf-parse")
 
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,

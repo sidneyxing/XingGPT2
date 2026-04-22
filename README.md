@@ -102,6 +102,7 @@ cd xinggpt
 ```bash
 cd backend
 npm install
+npm install multer pdf-parse form-data
 ```
 
 Create a `.env` file:
