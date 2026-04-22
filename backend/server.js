@@ -3,10 +3,14 @@ import cors from "cors"
 import dotenv from "dotenv"
 import OpenAI from "openai"
 import multer from "multer"
-import { createRequire } from "module"
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
+import { createRequire } from "module"
+
+const require = createRequire(import.meta.url)
+const pdfParseModule = require("pdf-parse")
+const pdfParse = typeof pdfParseModule === "function" ? pdfParseModule : pdfParseModule.default
 
 dotenv.config()
 
@@ -16,10 +20,15 @@ app.use(cors())
 app.use(express.json({ limit: "20mb" }))
 
 const memStorage = multer({ storage: multer.memoryStorage() })
-const diskStorage = multer({ dest: path.join(__dirname, "uploads/") })
-
-const require = createRequire(import.meta.url)
-const pdfParse = require("pdf-parse")
+const diskStorage = multer({
+  storage: multer.diskStorage({
+    destination: path.join(__dirname, "uploads/"),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname) || ".webm"
+      cb(null, Date.now() + ext)
+    }
+  })
+})
 
 const groq = new OpenAI({
   apiKey: process.env.GROQ_API_KEY,
@@ -42,7 +51,7 @@ function routeModel(messages, forceModel) {
   const hasImage = messages.some(m =>
     Array.isArray(m.content) && m.content.some(p => p.type === "image_url")
   )
-  if (hasImage) return "llava-v1.5-7b-4096-preview"
+  if (hasImage) return "meta-llama/llama-4-scout-17b-16e-instruct"
 
   if (/\b(code|function|class|bug|error|implement|algorithm|script|debug|compile)\b/.test(text))
     return "llama-3.3-70b-versatile"
@@ -289,7 +298,7 @@ app.post("/extract-memory", async (req, res) => {
 app.post("/summarize-pdf", memStorage.single("pdf"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No PDF file uploaded" })
   try {
-    const data = await pdfParse(req.file.buffer)
+    const data = await pdfParse(Buffer.from(req.file.buffer))
     const rawText = data.text?.trim()
     if (!rawText || rawText.length < 50)
       return res.status(422).json({ error: "Could not extract text. PDF may be image-based." })
@@ -326,26 +335,25 @@ app.post("/summarize-pdf", memStorage.single("pdf"), async (req, res) => {
 app.post("/transcribe-audio", diskStorage.single("audio"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No audio file uploaded" })
   const filePath = req.file.path
-  const originalName = req.file.originalname || "audio.mp3"
-  try {
-    const FormData = (await import("form-data")).default
-    const form = new FormData()
-    form.append("file", fs.createReadStream(filePath), originalName)
-    form.append("model", "whisper-large-v3")
-    form.append("response_format", "json")
+  const originalName = req.file.originalname || "recording.webm"
 
-    const whisperRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-      method: "POST",
-      headers: { "Authorization": `Bearer ${process.env.GROQ_API_KEY}`, ...form.getHeaders() },
-      body: form
+  try {
+    const Groq = (await import("groq-sdk")).default
+    const groqClient = new Groq({ apiKey: process.env.GROQ_API_KEY })
+
+    const transcription = await groqClient.audio.transcriptions.create({
+      file: fs.createReadStream(filePath),
+      model: "whisper-large-v3",
+      response_format: "json",
+      language: "en"
     })
-    const whisperData = await whisperRes.json()
-    if (!whisperRes.ok) throw new Error(whisperData?.error?.message || "Whisper API error")
 
     fs.unlinkSync(filePath)
-    return res.json({ transcript: whisperData.text || "" })
+    return res.json({ transcript: transcription.text || "" })
+
   } catch (err) {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    console.error("Audio error:", err.message)
     return res.status(500).json({ error: "Transcription failed: " + err.message })
   }
 })

@@ -102,7 +102,8 @@ cd xinggpt
 ```bash
 cd backend
 npm install
-npm install multer pdf-parse form-data
+npm install multer pdf-parse@1.1.1 form-data
+npm install groq-sdk
 ```
 
 Create a `.env` file:
