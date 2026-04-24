@@ -10,10 +10,33 @@ function saveMemory(facts) { localStorage.setItem(MEMORY_KEY, JSON.stringify(fac
 
 function fileToBase64(file) {
   return new Promise((res, rej) => {
-    const r = new FileReader()
-    r.onload = () => res(r.result)
-    r.onerror = rej
-    r.readAsDataURL(file)
+    // For images, compress before converting
+    if (file.type.startsWith("image/")) {
+      const img = new Image()
+      const url = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        const canvas = document.createElement("canvas")
+        // Max 1024px on longest side
+        const max = 1024
+        let w = img.width, h = img.height
+        if (w > max || h > max) {
+          if (w > h) { h = Math.round(h * max / w); w = max }
+          else { w = Math.round(w * max / h); h = max }
+        }
+        canvas.width = w
+        canvas.height = h
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h)
+        res(canvas.toDataURL("image/jpeg", 0.8))
+      }
+      img.onerror = rej
+      img.src = url
+    } else {
+      const r = new FileReader()
+      r.onload = () => res(r.result)
+      r.onerror = rej
+      r.readAsDataURL(file)
+    }
   })
 }
 

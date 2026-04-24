@@ -188,8 +188,9 @@ app.post("/chat", async (req, res) => {
 
   const systemContent = (memory?.length > 0
     ? `You are XingGPT, a helpful AI assistant.\nHere is what you remember about this user:\n` +
-      memory.map(m => `- ${m}`).join("\n") + `\nUse this context naturally when relevant.\n`
+    memory.map(m => `- ${m}`).join("\n") + `\nUse this context naturally when relevant.\n`
     : `You are XingGPT, a helpful and concise AI assistant.\n`) +
+    `You CAN see and analyze images that are sent to you. When an image is provided, describe and analyze it directly without saying you cannot see it.\n` +
     `You have tools available — follow these rules strictly:\n` +
     `- ALWAYS use get_weather for any weather question. Report only what the tool returns.\n` +
     `- ALWAYS use calculate for any math. Never compute mentally.\n` +
@@ -210,9 +211,24 @@ app.post("/chat", async (req, res) => {
   )
 
   try {
+    // Clean messages for vision - ensure image_url format is correct
+    const cleanedMessages = allMessages.map(msg => {
+      if (!Array.isArray(msg.content)) return msg
+      return {
+        ...msg,
+        content: msg.content.map(part => {
+          if (part.type !== "image_url") return part
+          const url = part.image_url?.url || ""
+          // Groq vision needs proper base64 format
+          const cleanUrl = url.startsWith("data:") ? url : `data:image/jpeg;base64,${url}`
+          return { type: "image_url", image_url: { url: cleanUrl } }
+        })
+      }
+    })
+
     const requestParams = {
       model: selectedModel,
-      messages: allMessages,
+      messages: cleanedMessages,
       temperature: safeTemp,
       max_tokens: safeMaxTokens,
       ...(!hasImage && { tools, tool_choice: "auto" })
@@ -232,7 +248,7 @@ app.post("/chat", async (req, res) => {
       }
       const followUp = await groq.chat.completions.create({
         model: selectedModel,
-        messages: [...allMessages, choice.message, ...toolResults],
+        messages: [...cleanedMessages, choice.message, ...toolResults],
         temperature: safeTemp,
         max_tokens: safeMaxTokens
       })
@@ -254,7 +270,7 @@ app.post("/chat", async (req, res) => {
     try {
       const fallback = await groq.chat.completions.create({
         model: "llama-3.3-70b-versatile",
-        messages: allMessages,
+        messages: cleanedMessages,
         temperature: safeTemp,
         max_tokens: safeMaxTokens
       })
@@ -310,10 +326,11 @@ app.post("/summarize-pdf", memStorage.single("pdf"), async (req, res) => {
       model: "llama-3.3-70b-versatile",
       messages: [
         { role: "system", content: "You are a helpful assistant that summarizes documents clearly." },
-        { role: "user", content:
-          `Summarize this PDF. Include: main topic, key points, and important conclusions.\n\n` +
-          (wasTruncated ? `(Truncated to fit context)\n\n` : "") +
-          `---\n${truncated}`
+        {
+          role: "user", content:
+            `Summarize this PDF. Include: main topic, key points, and important conclusions.\n\n` +
+            (wasTruncated ? `(Truncated to fit context)\n\n` : "") +
+            `---\n${truncated}`
         }
       ],
       temperature: 0.3,
