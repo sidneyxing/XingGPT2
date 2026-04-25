@@ -48,10 +48,10 @@ function routeModel(messages, forceModel) {
   if (/\b(search|find|latest|news|current|today|recent|what happened|who is|look up)\b/.test(text))
     return "llama-3.3-70b-versatile"
 
-  const hasImage = messages.some(m =>
-    Array.isArray(m.content) && m.content.some(p => p.type === "image_url")
-  )
-  if (hasImage) return "meta-llama/llama-4-scout-17b-16e-instruct"
+  const lastMsg = [...messages].reverse().find(m => m.role === "user")
+  const hasImageNow = Array.isArray(lastMsg?.content) &&
+    lastMsg.content.some(p => p.type === "image_url")
+  if (hasImageNow) return "meta-llama/llama-4-scout-17b-16e-instruct"
 
   if (/\b(code|function|class|bug|error|implement|algorithm|script|debug|compile)\b/.test(text))
     return "llama-3.3-70b-versatile"
@@ -187,10 +187,10 @@ app.post("/chat", async (req, res) => {
   let { messages, model, temperature, max_tokens, memory } = req.body
 
   const systemContent = (memory?.length > 0
-    ? `You are XingGPT, a helpful AI assistant.\nHere is what you remember about this user:\n` +
+    ? `You are XingGPT, a helpful AI assistant with vision capabilities.\nHere is what you remember about this user:\n` +
     memory.map(m => `- ${m}`).join("\n") + `\nUse this context naturally when relevant.\n`
-    : `You are XingGPT, a helpful and concise AI assistant.\n`) +
-    `You CAN see and analyze images that are sent to you. When an image is provided, describe and analyze it directly without saying you cannot see it.\n` +
+    : `You are XingGPT, a helpful and concise AI assistant with vision capabilities.\n`) +
+    `You CAN see and analyze images that are sent to you. Describe and analyze images directly without saying you cannot see them.\n` +
     `You have tools available — follow these rules strictly:\n` +
     `- ALWAYS use get_weather for any weather question. Report only what the tool returns.\n` +
     `- ALWAYS use calculate for any math. Never compute mentally.\n` +
@@ -199,39 +199,40 @@ app.post("/chat", async (req, res) => {
     `- Never say data may be inaccurate when a tool was used — trust the tool result.\n` +
     `- When web_search returns results, cite them naturally in your response.`
 
-  const allMessages = [{ role: "system", content: systemContent }, ...messages]
-  const selectedModel = routeModel(messages, model)
   const safeTemp = temperature ?? 0.7
   const safeMaxTokens = max_tokens ?? 1500
 
+  // Only check the LAST user message for image
+  const lastUserMessage = [...messages].reverse().find(m => m.role === "user")
+  const currentMessageHasImage = Array.isArray(lastUserMessage?.content) &&
+    lastUserMessage.content.some(p => p.type === "image_url")
+
+  // Strip images from ALL messages except the current one
+  const strippedMessages = messages.map(msg => {
+    if (!Array.isArray(msg.content)) return msg
+    const isCurrentMsg = msg === lastUserMessage
+    if (isCurrentMsg) return msg // keep current message with image intact
+    // Remove image_url parts from older messages, keep only text
+    const textParts = msg.content.filter(p => p.type === "text")
+    if (textParts.length === 0) return { ...msg, content: "[image]" }
+    if (textParts.length === 1) return { ...msg, content: textParts[0].text }
+    return { ...msg, content: textParts }
+  })
+
+  const selectedModel = routeModel(strippedMessages, model)
   console.log(`[Route] ${selectedModel}`)
 
-  const hasImage = messages.some(m =>
-    Array.isArray(m.content) && m.content.some(p => p.type === "image_url")
-  )
-
+  const cleanedMessages = [
+    { role: "system", content: systemContent },
+    ...strippedMessages
+  ]
   try {
-    // Clean messages for vision - ensure image_url format is correct
-    const cleanedMessages = allMessages.map(msg => {
-      if (!Array.isArray(msg.content)) return msg
-      return {
-        ...msg,
-        content: msg.content.map(part => {
-          if (part.type !== "image_url") return part
-          const url = part.image_url?.url || ""
-          // Groq vision needs proper base64 format
-          const cleanUrl = url.startsWith("data:") ? url : `data:image/jpeg;base64,${url}`
-          return { type: "image_url", image_url: { url: cleanUrl } }
-        })
-      }
-    })
-
     const requestParams = {
       model: selectedModel,
       messages: cleanedMessages,
       temperature: safeTemp,
       max_tokens: safeMaxTokens,
-      ...(!hasImage && { tools, tool_choice: "auto" })
+      ...(!currentMessageHasImage && { tools, tool_choice: "auto" })
     }
 
     const response = await groq.chat.completions.create(requestParams)
